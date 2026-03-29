@@ -14,7 +14,7 @@
 	"files": [
 		"src"
 	],
-	"repository": "seanghay/skia-wasm",
+	"repository": "seanghay/skia-web",
 	"main": "./src/index.js",
 	"types": "./src/index.d.ts",
 	"exports": {

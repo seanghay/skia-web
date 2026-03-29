@@ -2,6 +2,6 @@
   "name": "skia-example-node",
   "type": "module",
   "dependencies": {
-    "skia": "file:../.."
+    "skia": "latest"
   }
 }

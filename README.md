@@ -1,6 +1,6 @@
 # Skia for Web
 
-WebAssembly bindings for the [Skia](https://skia.org) graphics library. Designed for document generation — export to PDF, SVG, and PNG with full text layout and custom font support.
+WebAssembly bindings for the [Skia](https://skia.org) graphics library. Designed for image or document generation — export to PDF, SVG, and PNG with full text layout and custom font support.
 
 ![output](examples/node/output.svg)
 

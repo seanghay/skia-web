@@ -2,10 +2,9 @@ import { initializeWasm } from "./utils.js";
 
 const wasmFile = new URL("./canvaskit.wasm", import.meta.url).href;
 
-export async function create({ fonts = [] } = {}) {
+export async function create() {
 	return initializeWasm({
-		wasmFile,
-		fonts,
+		wasmFile
 	});
 }
 

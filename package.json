@@ -1,0 +1,24 @@
+{
+	"name": "skia",
+  "description": "WebAssembly bindings for Skia Graphics Library",
+  "version": "0.0.1",
+	"type": "module",
+   "author": {
+    "name": "Seanghay Yath",
+    "email": "seanghay.dev@gmail.com"
+  },
+  "license": "Apache-2.0",
+  "files": ["src"],
+  "repository": "seanghay/skia-wasm",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "browser": "./src/browser.js",
+      "import": "./src/index.js",
+      "default": "./src/index.js"
+    },
+    "./canvaskit.wasm": "./src/canvaskit.wasm"
+  }
+}

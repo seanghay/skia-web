@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>skia-wasm web example</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #f5f5f5;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem;
+      gap: 1rem;
+    }
+    h1 { font-size: 1.4rem; color: #222; }
+    canvas {
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      background: white;
+      max-width: 100%;
+    }
+    .actions { display: flex; gap: 0.75rem; }
+    button {
+      padding: 0.5rem 1.25rem;
+      border: none;
+      border-radius: 4px;
+      background: #2563eb;
+      color: white;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    button:disabled { opacity: 0.5; cursor: default; }
+    button:not(:disabled):hover { background: #1d4ed8; }
+    #status { font-size: 0.85rem; color: #555; }
+  </style>
+</head>
+<body>
+  <h1>skia-wasm &mdash; browser example</h1>
+  <p id="status">Initializing...</p>
+  <canvas id="canvas" width="800" height="600"></canvas>
+  <div class="actions">
+    <button id="btn-pdf" disabled>Download PDF</button>
+    <button id="btn-svg" disabled>Download SVG</button>
+  </div>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

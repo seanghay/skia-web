@@ -2,6 +2,8 @@
 
 WebAssembly bindings for the [Skia](https://skia.org) graphics library. Designed for document generation — export to PDF, SVG, and PNG with full text layout and custom font support.
 
+![output](examples/node/output.svg)
+
 - No GPU (CPU-only, keeps the binary small)
 - No browser Canvas API emulation
 - No system fonts — all fonts must be loaded manually

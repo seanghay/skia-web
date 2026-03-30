@@ -374,6 +374,7 @@ export interface CanvasKit {
     readonly PathEffect: PathEffectFactory;
     readonly RuntimeEffect: RuntimeEffectFactory;
     readonly Shader: ShaderFactory;
+    readonly Shaper: ShaperFactory;
     readonly TextBlob: TextBlobFactory;
     readonly Typeface: TypefaceFactory;
     readonly TypefaceFontProvider: TypefaceFontProviderFactory;
@@ -4881,4 +4882,103 @@ export interface PDFDocument extends EmbindObject<"PDFDocument"> {
      * Finalizes the document and returns the PDF data as a Uint8Array.
      */
     close(): Uint8Array;
+}
+
+
+
+/**
+ * A Shaper wraps SkShaper and provides text shaping — converting UTF-8 strings
+ * into positioned glyph runs (SkTextBlob) ready for drawing on a Canvas.
+ * Requires fonts to be compiled in (not available in no-font builds).
+ */
+export interface Shaper extends EmbindObject<"Shaper"> {
+    /**
+     * Shapes the given UTF-8 text with the provided font and returns an
+     * SkTextBlob. Returns null if shaping produces no glyphs (e.g. empty
+     * string or font has no matching glyphs).
+     *
+     * @param text        UTF-8 text to shape.
+     * @param font        Base font (size, typeface, etc.).
+     * @param leftToRight true for LTR text, false for RTL.
+     * @param width       Line-wrap width in pixels. Pass a very large value
+     *                    (e.g. Infinity is clamped — use 1e9) to disable wrapping.
+     * @param offsetX     X offset embedded into all glyph positions.
+     * @param offsetY     Y offset (baseline) embedded into all glyph positions.
+     */
+    shapeTextToBlob(
+        text: string,
+        font: Font,
+        leftToRight: boolean,
+        width: number,
+        offsetX: number,
+        offsetY: number,
+    ): TextBlob | null;
+
+    /**
+     * Like shapeTextToBlob but uses fontMgr for automatic per-run font
+     * fallback. When a glyph is not found in `font`, fontMgr is searched
+     * for a face that covers the missing codepoints. Essential for correct
+     * rendering of mixed-script or multilingual text.
+     *
+     * @param text        UTF-8 text to shape.
+     * @param font        Primary font; fallback fonts are sourced from fontMgr.
+     * @param fontMgr     Font manager used to resolve missing glyphs
+     *                    (e.g. a TypefaceFontProvider with multiple faces registered).
+     * @param leftToRight true for LTR text, false for RTL.
+     * @param width       Line-wrap width in pixels.
+     * @param offsetX     X offset embedded into all glyph positions.
+     * @param offsetY     Y offset (baseline) embedded into all glyph positions.
+     */
+    shapeTextToBlobWithFontMgr(
+        text: string,
+        font: Font,
+        fontMgr: FontMgr,
+        leftToRight: boolean,
+        width: number,
+        offsetX: number,
+        offsetY: number,
+    ): TextBlob | null;
+
+    /**
+     * Shapes text and returns the final pen position as [x, y].
+     * Useful for chaining multiple shaped runs (e.g. mixed-style text on
+     * one line) where you need to know where the next run should start.
+     *
+     * @param text        UTF-8 text to shape.
+     * @param font        Base font.
+     * @param leftToRight true for LTR text, false for RTL.
+     * @param width       Line-wrap width in pixels.
+     * @param offsetX     Starting X offset.
+     * @param offsetY     Starting Y offset (baseline).
+     * @returns           Float32Array of length 2: [endX, endY].
+     */
+    getEndPoint(
+        text: string,
+        font: Font,
+        leftToRight: boolean,
+        width: number,
+        offsetX: number,
+        offsetY: number,
+    ): Float32Array;
+}
+
+export interface ShaperFactory {
+    /**
+     * Creates a Shaper using the best available text-shaping backend
+     * (HarfBuzz + ICU when compiled in, otherwise the primitive shaper).
+     */
+    Make(): Shaper;
+
+    /**
+     * Creates a Shaper with a specific font manager for glyph-level font
+     * fallback during shaping (distinct from the per-blob fallback provided
+     * by shapeTextToBlobWithFontMgr).
+     */
+    MakeWithFontMgr(fontMgr: FontMgr): Shaper;
+
+    /**
+     * Creates a primitive (no HarfBuzz) Shaper. Smaller code path, but
+     * does not support complex scripts, BiDi, or OpenType features.
+     */
+    MakePrimitive(): Shaper;
 }

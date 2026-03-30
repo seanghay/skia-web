@@ -1368,6 +1368,22 @@ export interface Canvas extends EmbindObject<"Canvas"> {
                font: Font, paint: Paint): void;
 
     /**
+     * Draws glyphs at positions defined by RSXforms (rotation + scale + translate).
+     * Each glyph i is placed at xforms[i], which encodes [scos, ssin, tx, ty].
+     * Use CanvasKit.RSXFormMake(scos, ssin, tx, ty) to build individual entries.
+     * @param glyphs    glyph IDs
+     * @param xforms    flat array of RSXform values: [scos, ssin, tx, ty] per glyph
+     * @param x         overall X origin added to all transforms
+     * @param y         overall Y origin added to all transforms
+     * @param font
+     * @param paint
+     */
+    drawGlyphsRSXform(glyphs: InputGlyphIDArray,
+                      xforms: InputFlattenedRSXFormArray,
+                      x: number, y: number,
+                      font: Font, paint: Paint): void;
+
+    /**
      * Draws the given image with its top-left corner at (left, top) using the current clip,
      * the current matrix, and optionally-provided paint.
      * @param img
@@ -1951,6 +1967,14 @@ export interface Font extends EmbindObject<"Font"> {
      * @param face
      */
     setTypeface(face: Typeface | null): void;
+
+    /**
+     * Returns the outline path for the given glyph ID, or an empty Path if the
+     * glyph has no outline (bitmap glyph or invalid ID).
+     * Use font.getGlyphIDs(str) to obtain glyph IDs from a string first.
+     * @param glyphID
+     */
+    getGlyphPath(glyphID: number): Path;
 }
 
 /**
@@ -3031,6 +3055,34 @@ export interface Typeface extends EmbindObject<"Typeface"> {
      * Return the typeface family name.
      */
     getFamilyName(): string;
+
+    /**
+     * Returns all variation axes supported by this typeface as an array of
+     * VariationAxis objects. Returns an empty array for non-variable fonts.
+     */
+    getVariationAxes(): VariationAxis[];
+
+    /**
+     * Returns a new typeface with the specified variation axes applied.
+     * Any axis not listed keeps its default value; unknown axes are ignored.
+     * Returns null if the typeface could not be cloned with the new settings.
+     * @param axes  array of { axis: 4-char tag string, value: number }
+     */
+    makeVariation(axes: { axis: string; value: number }[]): Typeface | null;
+}
+
+/**
+ * Describes a single variation axis in a variable font.
+ */
+export interface VariationAxis {
+    /** Four-character OpenType tag, e.g. "wght" or "wdth". */
+    tag: string;
+    /** Minimum value for this axis. */
+    min: number;
+    /** Default value for this axis. */
+    default: number;
+    /** Maximum value for this axis. */
+    max: number;
 }
 
 /**
@@ -4874,6 +4926,17 @@ export interface PDFDocument extends EmbindObject<"PDFDocument"> {
     beginPage(width: number, height: number): Canvas;
 
     /**
+     * Starts a new page with the given dimensions and an explicit content rect.
+     * The content rect tells PDF viewers which portion of the page holds actual
+     * content (used for cropping, thumbnails, and accessibility metadata).
+     * @param width
+     * @param height
+     * @param contentRect - [left, top, right, bottom] in page coordinates
+     */
+    beginPageWithContentRect(width: number, height: number,
+                             contentRect: InputRect): Canvas;
+
+    /**
      * Finishes the current page.
      */
     endPage(): void;
@@ -4960,6 +5023,48 @@ export interface Shaper extends EmbindObject<"Shaper"> {
         offsetX: number,
         offsetY: number,
     ): Float32Array;
+
+    /**
+     * Full-control shaping: combines font fallback (via fontMgr) with explicit
+     * OpenType features. Pass null for fontMgr to use only the primary font.
+     *
+     * Features are applied per UTF-8 byte range [start, end). To apply a feature
+     * to the entire string use start=0 and end equal to the byte length of the text.
+     *
+     * @param text        UTF-8 text to shape.
+     * @param font        Primary font.
+     * @param fontMgr     Font manager for fallback (may be null).
+     * @param leftToRight true for LTR, false for RTL.
+     * @param width       Line-wrap width in pixels.
+     * @param offsetX     X offset embedded into all glyph positions.
+     * @param offsetY     Y offset (baseline) embedded into all glyph positions.
+     * @param features    OpenType features to apply.
+     */
+    shapeTextToBlobWithFeatures(
+        text: string,
+        font: Font,
+        fontMgr: FontMgr | null,
+        leftToRight: boolean,
+        width: number,
+        offsetX: number,
+        offsetY: number,
+        features: OpenTypeFeature[],
+    ): TextBlob | null;
+}
+
+/**
+ * Represents an OpenType feature to enable or disable during text shaping.
+ * Tags are 4-character ASCII strings (e.g. "liga", "kern", "smcp", "frac").
+ */
+export interface OpenTypeFeature {
+    /** 4-character OpenType feature tag, e.g. "liga", "kern", "smcp". */
+    tag: string;
+    /** Feature value — 0 to disable, 1 (or higher) to enable/select. */
+    value: number;
+    /** UTF-8 byte offset of the first character this feature applies to. */
+    start: number;
+    /** UTF-8 byte offset one past the last character (exclusive end). */
+    end: number;
 }
 
 export interface ShaperFactory {

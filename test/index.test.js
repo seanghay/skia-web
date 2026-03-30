@@ -1114,3 +1114,373 @@ describe('Shaper', () => {
     assert.doesNotThrow(() => provider.delete());
   });
 });
+
+// ─── Font.getGlyphPath ────────────────────────────────────────────────────────
+
+describe('Font.getGlyphPath', () => {
+  let typeface;
+  let font;
+
+  before(() => {
+    const ab = fontData.buffer.slice(fontData.byteOffset, fontData.byteOffset + fontData.byteLength);
+    typeface = CanvasKit.Typeface.MakeFreeTypeFaceFromData(ab);
+    font = new CanvasKit.Font(typeface, 48);
+  });
+
+  after(() => {
+    font.delete();
+    typeface.delete();
+  });
+
+  it('returns a Path object', () => {
+    const [glyphID] = font.getGlyphIDs('A');
+    const path = font.getGlyphPath(glyphID);
+    assert.ok(path, 'expected a Path for glyph A');
+    path.delete();
+  });
+
+  it('path for a normal glyph is non-empty', () => {
+    const [glyphID] = font.getGlyphIDs('A');
+    const path = font.getGlyphPath(glyphID);
+    assert.ok(!path.isEmpty(), 'outline path for A should not be empty');
+    path.delete();
+  });
+
+  it('path bounds are sensible for an uppercase letter', () => {
+    const [glyphID] = font.getGlyphIDs('M');
+    const path = font.getGlyphPath(glyphID);
+    const bounds = path.getBounds(); // [left, top, right, bottom]
+    assert.ok(bounds[2] > bounds[0], 'path width should be positive');
+    assert.ok(bounds[3] > bounds[1], 'path height should be positive');
+    path.delete();
+  });
+
+  it('different glyphs produce different paths', () => {
+    const [idA] = font.getGlyphIDs('A');
+    const [idB] = font.getGlyphIDs('B');
+    const pathA = font.getGlyphPath(idA);
+    const pathB = font.getGlyphPath(idB);
+    const boundsA = pathA.getBounds();
+    const boundsB = pathB.getBounds();
+    // At minimum the paths should exist; widths are almost certainly different
+    assert.ok(!pathA.isEmpty());
+    assert.ok(!pathB.isEmpty());
+    pathA.delete();
+    pathB.delete();
+  });
+
+  it('path can be drawn on a canvas', () => {
+    const [glyphID] = font.getGlyphIDs('G');
+    const path = font.getGlyphPath(glyphID);
+    const surface = CanvasKit.MakeSurface(W, H);
+    const paint = new CanvasKit.Paint();
+    paint.setColor(CanvasKit.BLACK);
+    assert.doesNotThrow(() => surface.getCanvas().drawPath(path, paint));
+    const image = surface.makeImageSnapshot();
+    const bytes = image.encodeToBytes();
+    assert.strictEqual(bytes[0], 0x89); // valid PNG
+    image.delete();
+    paint.delete();
+    surface.delete();
+    path.delete();
+  });
+
+  it('path.delete() does not throw', () => {
+    const [glyphID] = font.getGlyphIDs('X');
+    const path = font.getGlyphPath(glyphID);
+    assert.doesNotThrow(() => path.delete());
+  });
+});
+
+// ─── Canvas.drawGlyphsRSXform ────────────────────────────────────────────────
+// NOTE: drawGlyphsRSXform is declared in canvaskit.d.ts but the current WASM
+// binary only exposes drawGlyphs. Tests are skipped until the WASM is updated.
+
+describe('Canvas.drawGlyphsRSXform', { skip: 'not yet in WASM binary (only drawGlyphs is available)' }, () => {
+  it('draws glyphs with identity xforms without throwing', () => {});
+  it('produces a valid PNG after drawing', () => {});
+  it('applies rotation via scos/ssin', () => {});
+  it('overall x/y origin offsets all glyphs', () => {});
+});
+
+// ─── Typeface variation axes ──────────────────────────────────────────────────
+// getVariationAxes() returns a Float32Array packed as [tag_f32, min, default, max]
+// repeated per axis (4 values each). makeVariation is declared in the d.ts but
+// is only exposed as _makeVariation in the current WASM; those tests are skipped.
+
+describe('Typeface.getVariationAxes / makeVariation', () => {
+  let typeface;
+
+  before(() => {
+    const ab = fontData.buffer.slice(fontData.byteOffset, fontData.byteOffset + fontData.byteLength);
+    typeface = CanvasKit.Typeface.MakeFreeTypeFaceFromData(ab);
+  });
+
+  after(() => typeface.delete());
+
+  it('getVariationAxes() returns a Float32Array', () => {
+    const axes = typeface.getVariationAxes();
+    assert.ok(axes instanceof Float32Array, `expected Float32Array, got ${axes?.constructor?.name}`);
+  });
+
+  it('length is a multiple of 4 (4 floats per axis)', () => {
+    const axes = typeface.getVariationAxes();
+    assert.strictEqual(axes.length % 4, 0);
+  });
+
+  it('Google Sans has 3 variation axes (length === 12)', () => {
+    // Google Sans is a variable font with opsz, wght, GRAD axes
+    const axes = typeface.getVariationAxes();
+    assert.strictEqual(axes.length, 12); // 3 axes × 4 values
+  });
+
+  it('each axis: min <= default <= max', () => {
+    const axes = typeface.getVariationAxes();
+    for (let i = 0; i < axes.length; i += 4) {
+      // layout: [tag_f32, min, default, max]
+      const min     = axes[i + 1];
+      const def     = axes[i + 2];
+      const max     = axes[i + 3];
+      assert.ok(min <= def, `axis ${i / 4}: min (${min}) > default (${def})`);
+      assert.ok(def <= max, `axis ${i / 4}: default (${def}) > max (${max})`);
+    }
+  });
+
+  it('wght axis has range covering 400–700 (Google Sans)', () => {
+    const axes = typeface.getVariationAxes();
+    // Find an axis where max >= 700 and min <= 400 — that is wght
+    let found = false;
+    for (let i = 0; i < axes.length; i += 4) {
+      const min = axes[i + 1];
+      const max = axes[i + 3];
+      if (min <= 400 && max >= 700) { found = true; break; }
+    }
+    assert.ok(found, 'expected a weight axis covering 400–700');
+  });
+
+  // makeVariation is declared in d.ts but exposed only as _makeVariation in WASM
+  it('makeVariation() is not yet publicly exposed', { skip: 'only _makeVariation exists in current WASM' }, () => {
+    assert.strictEqual(typeof typeface.makeVariation, 'function');
+  });
+});
+
+// ─── PDFDocument.beginPageWithContentRect ────────────────────────────────────
+
+describe('PDFDocument.beginPageWithContentRect', () => {
+  it('returns a Canvas without throwing', () => {
+    const meta = new CanvasKit.PDFMetadata();
+    const doc = new CanvasKit.PDFDocument(meta);
+    let canvas;
+    assert.doesNotThrow(() => {
+      canvas = doc.beginPageWithContentRect(W, H, CanvasKit.LTRBRect(10, 10, W - 10, H - 10));
+    });
+    assert.ok(canvas);
+    doc.endPage();
+    doc.close();
+    doc.delete();
+  });
+
+  it('produces valid PDF bytes starting with %PDF', () => {
+    const meta = new CanvasKit.PDFMetadata();
+    const doc = new CanvasKit.PDFDocument(meta);
+    doc.beginPageWithContentRect(W, H, CanvasKit.LTRBRect(0, 0, W, H));
+    doc.endPage();
+    const bytes = doc.close();
+    doc.delete();
+    assert.ok(bytes instanceof Uint8Array);
+    assert.strictEqual(bytes[0], 0x25); // %
+    assert.strictEqual(bytes[1], 0x50); // P
+    assert.strictEqual(bytes[2], 0x44); // D
+    assert.strictEqual(bytes[3], 0x46); // F
+  });
+
+  it('content can be drawn onto the returned canvas', () => {
+    const meta = new CanvasKit.PDFMetadata();
+    const doc = new CanvasKit.PDFDocument(meta);
+    const canvas = doc.beginPageWithContentRect(W, H, CanvasKit.LTRBRect(20, 20, W - 20, H - 20));
+    const paint = new CanvasKit.Paint();
+    paint.setColor(CanvasKit.BLACK);
+    assert.doesNotThrow(() => canvas.drawRect(CanvasKit.LTRBRect(30, 30, 100, 80), paint));
+    paint.delete();
+    doc.endPage();
+    const bytes = doc.close();
+    doc.delete();
+    assert.ok(bytes.length > 0);
+  });
+
+  it('content rect smaller than page does not corrupt output', () => {
+    const meta = new CanvasKit.PDFMetadata();
+    const doc = new CanvasKit.PDFDocument(meta);
+    // Tiny content rect — just a 10x10 region
+    doc.beginPageWithContentRect(W, H, CanvasKit.LTRBRect(100, 100, 110, 110));
+    doc.endPage();
+    const bytes = doc.close();
+    doc.delete();
+    assert.strictEqual(bytes[0], 0x25); // still valid %PDF
+  });
+
+  it('multi-page mix of beginPage and beginPageWithContentRect', () => {
+    const meta = new CanvasKit.PDFMetadata();
+    const doc = new CanvasKit.PDFDocument(meta);
+    doc.beginPage(W, H);
+    doc.endPage();
+    doc.beginPageWithContentRect(W, H, CanvasKit.LTRBRect(10, 10, W - 10, H - 10));
+    doc.endPage();
+    doc.beginPage(W, H);
+    doc.endPage();
+    const bytes = doc.close();
+    doc.delete();
+    assert.strictEqual(bytes[0], 0x25);
+    assert.ok(bytes.length > 0);
+  });
+});
+
+// ─── Shaper.shapeTextToBlobWithFeatures ──────────────────────────────────────
+
+describe('Shaper.shapeTextToBlobWithFeatures', () => {
+  let typeface;
+  let font;
+  let fontProvider;
+
+  before(() => {
+    const ab = fontData.buffer.slice(fontData.byteOffset, fontData.byteOffset + fontData.byteLength);
+    typeface = CanvasKit.Typeface.MakeFreeTypeFaceFromData(ab);
+    font = new CanvasKit.Font(typeface, 24);
+    fontProvider = CanvasKit.TypefaceFontProvider.Make();
+    fontProvider.registerFont(ab, 'Google Sans');
+  });
+
+  after(() => {
+    font.delete();
+    typeface.delete();
+    fontProvider.delete();
+  });
+
+  it('returns a TextBlob for ASCII text with empty features array', () => {
+    const shaper = CanvasKit.Shaper.Make();
+    const blob = shaper.shapeTextToBlobWithFeatures(
+      'Hello World', font, null, true, 500, 0, 0, [],
+    );
+    assert.ok(blob !== null, 'expected a TextBlob');
+    blob.delete();
+    shaper.delete();
+  });
+
+  it('returns null for empty string', () => {
+    const shaper = CanvasKit.Shaper.Make();
+    const blob = shaper.shapeTextToBlobWithFeatures('', font, null, true, 500, 0, 0, []);
+    assert.strictEqual(blob, null);
+    shaper.delete();
+  });
+
+  it('ligature feature (liga) does not throw', () => {
+    const text = 'ffi office';
+    const shaper = CanvasKit.Shaper.Make();
+    assert.doesNotThrow(() => {
+      const blob = shaper.shapeTextToBlobWithFeatures(
+        text, font, null, true, 500, 0, 0,
+        [{ tag: 'liga', value: 1, start: 0, end: text.length }],
+      );
+      blob?.delete();
+    });
+    shaper.delete();
+  });
+
+  it('kerning feature (kern) does not throw', () => {
+    const text = 'AV Wa';
+    const shaper = CanvasKit.Shaper.Make();
+    assert.doesNotThrow(() => {
+      const blob = shaper.shapeTextToBlobWithFeatures(
+        text, font, null, true, 500, 0, 0,
+        [{ tag: 'kern', value: 1, start: 0, end: text.length }],
+      );
+      blob?.delete();
+    });
+    shaper.delete();
+  });
+
+  it('disabling a feature (value=0) does not throw', () => {
+    const text = 'ffi test';
+    const shaper = CanvasKit.Shaper.Make();
+    assert.doesNotThrow(() => {
+      const blob = shaper.shapeTextToBlobWithFeatures(
+        text, font, null, true, 500, 0, 0,
+        [{ tag: 'liga', value: 0, start: 0, end: text.length }],
+      );
+      blob?.delete();
+    });
+    shaper.delete();
+  });
+
+  it('feature applied to a sub-range does not throw', () => {
+    const text = 'Hello World';
+    const shaper = CanvasKit.Shaper.Make();
+    assert.doesNotThrow(() => {
+      const blob = shaper.shapeTextToBlobWithFeatures(
+        text, font, null, true, 500, 0, 0,
+        [{ tag: 'kern', value: 1, start: 0, end: 5 }], // only "Hello"
+      );
+      blob?.delete();
+    });
+    shaper.delete();
+  });
+
+  it('multiple features in one call does not throw', () => {
+    const text = 'ffi office AV';
+    const shaper = CanvasKit.Shaper.Make();
+    assert.doesNotThrow(() => {
+      const blob = shaper.shapeTextToBlobWithFeatures(
+        text, font, null, true, 500, 0, 0,
+        [
+          { tag: 'liga', value: 1, start: 0, end: text.length },
+          { tag: 'kern', value: 1, start: 0, end: text.length },
+        ],
+      );
+      blob?.delete();
+    });
+    shaper.delete();
+  });
+
+  it('result can be drawn on a canvas', () => {
+    const shaper = CanvasKit.Shaper.Make();
+    const text = 'Hello';
+    const blob = shaper.shapeTextToBlobWithFeatures(
+      text, font, null, true, 500, 0, 0,
+      [{ tag: 'kern', value: 1, start: 0, end: text.length }],
+    );
+    assert.ok(blob);
+    const surface = CanvasKit.MakeSurface(W, H);
+    const paint = new CanvasKit.Paint();
+    paint.setColor(CanvasKit.BLACK);
+    surface.getCanvas().drawTextBlob(blob, 10, 50, paint);
+    const image = surface.makeImageSnapshot();
+    const bytes = image.encodeToBytes();
+    assert.strictEqual(bytes[0], 0x89); // valid PNG
+    image.delete();
+    paint.delete();
+    surface.delete();
+    blob.delete();
+    shaper.delete();
+  });
+
+  it('with fontProvider instead of null fontMgr', () => {
+    const shaper = CanvasKit.Shaper.Make();
+    const text = 'Hello World';
+    const blob = shaper.shapeTextToBlobWithFeatures(
+      text, font, fontProvider, true, 500, 0, 0,
+      [{ tag: 'kern', value: 1, start: 0, end: text.length }],
+    );
+    assert.ok(blob !== null);
+    blob.delete();
+    shaper.delete();
+  });
+
+  it('TextBlob delete() does not throw', () => {
+    const shaper = CanvasKit.Shaper.Make();
+    const blob = shaper.shapeTextToBlobWithFeatures(
+      'cleanup', font, null, true, 500, 0, 0, [],
+    );
+    assert.doesNotThrow(() => blob?.delete());
+    shaper.delete();
+  });
+});

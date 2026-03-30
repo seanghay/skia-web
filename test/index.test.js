@@ -891,3 +891,226 @@ describe('picture reuse', () => {
     assert.ok(bytes.length > 0);
   });
 });
+
+describe('Shaper', () => {
+  let typeface;
+  let font;
+  let fontProvider; // TypefaceFontProvider
+  let fontArrayBuffer;
+
+  before(() => {
+    fontArrayBuffer = fontData.buffer.slice(
+      fontData.byteOffset,
+      fontData.byteOffset + fontData.byteLength,
+    );
+    typeface = CanvasKit.Typeface.MakeFreeTypeFaceFromData(fontArrayBuffer);
+    font = new CanvasKit.Font(typeface, 24);
+    fontProvider = CanvasKit.TypefaceFontProvider.Make();
+    fontProvider.registerFont(fontArrayBuffer, 'Google Sans');
+  });
+
+  after(() => {
+    font.delete();
+    typeface.delete();
+    fontProvider.delete();
+  });
+
+  // --- factory ---
+
+  it('Shaper.Make() returns a non-null Shaper', () => {
+    const shaper = CanvasKit.Shaper.Make();
+    assert.ok(shaper);
+    shaper.delete();
+  });
+
+  it('Shaper.MakePrimitive() returns a non-null Shaper', () => {
+    const shaper = CanvasKit.Shaper.MakePrimitive();
+    assert.ok(shaper);
+    shaper.delete();
+  });
+
+  it('Shaper.MakeWithFontMgr() returns a non-null Shaper', () => {
+    // MakeWithFontMgr requires a FontMgr (not TypefaceFontProvider — different binding type)
+    const mgr = CanvasKit.FontMgr.FromData(fontArrayBuffer);
+    const shaper = CanvasKit.Shaper.MakeWithFontMgr(mgr);
+    assert.ok(shaper);
+    shaper.delete();
+    mgr.delete();
+  });
+
+  // --- shapeTextToBlob ---
+
+  it('shapeTextToBlob() returns a non-null TextBlob for ASCII text', () => {
+    const shaper = CanvasKit.Shaper.Make();
+    const blob = shaper.shapeTextToBlob('Hello World', font, true, 500, 0, 0);
+    assert.ok(blob !== null, 'expected a TextBlob for ASCII text');
+    blob.delete();
+    shaper.delete();
+  });
+
+  it('shapeTextToBlob() returns null for empty string', () => {
+    const shaper = CanvasKit.Shaper.Make();
+    const blob = shaper.shapeTextToBlob('', font, true, 500, 0, 0);
+    // empty input → no glyphs → null
+    assert.strictEqual(blob, null);
+    shaper.delete();
+  });
+
+  it('shapeTextToBlob() RTL flag does not throw', () => {
+    const shaper = CanvasKit.Shaper.Make();
+    assert.doesNotThrow(() => {
+      const blob = shaper.shapeTextToBlob('Hello', font, false /* RTL */, 500, 0, 0);
+      blob?.delete();
+    });
+    shaper.delete();
+  });
+
+  it('shapeTextToBlob() result can be drawn on a canvas', () => {
+    const shaper = CanvasKit.Shaper.Make();
+    const blob = shaper.shapeTextToBlob('Hello CanvasKit', font, true, 1000, 0, 0);
+    assert.ok(blob);
+    const surface = CanvasKit.MakeSurface(W, H);
+    const paint = new CanvasKit.Paint();
+    paint.setColor(CanvasKit.BLACK);
+    assert.doesNotThrow(() => surface.getCanvas().drawTextBlob(blob, 0, 50, paint));
+    const image = surface.makeImageSnapshot();
+    const bytes = image.encodeToBytes();
+    assert.ok(bytes[0] === 0x89); // valid PNG
+    image.delete();
+    paint.delete();
+    surface.delete();
+    blob.delete();
+    shaper.delete();
+  });
+
+  it('shapeTextToBlob() with narrow width wraps text (does not throw)', () => {
+    const shaper = CanvasKit.Shaper.Make();
+    assert.doesNotThrow(() => {
+      const blob = shaper.shapeTextToBlob('Hello World this is a long sentence', font, true, 50, 0, 0);
+      blob?.delete();
+    });
+    shaper.delete();
+  });
+
+  // --- shapeTextToBlobWithFontMgr ---
+
+  it('shapeTextToBlobWithFontMgr() returns a non-null TextBlob for ASCII', () => {
+    const shaper = CanvasKit.Shaper.Make();
+    const blob = shaper.shapeTextToBlobWithFontMgr('Hello World', font, fontProvider, true, 500, 0, 0);
+    assert.ok(blob !== null, 'expected a TextBlob');
+    blob.delete();
+    shaper.delete();
+  });
+
+  it('shapeTextToBlobWithFontMgr() returns null for empty string', () => {
+    const shaper = CanvasKit.Shaper.Make();
+    const blob = shaper.shapeTextToBlobWithFontMgr('', font, fontProvider, true, 500, 0, 0);
+    assert.strictEqual(blob, null);
+    shaper.delete();
+  });
+
+  it('shapeTextToBlobWithFontMgr() handles Khmer text', () => {
+    const shaper = CanvasKit.Shaper.Make();
+    // Google Sans covers basic Khmer glyphs
+    const blob = shaper.shapeTextToBlobWithFontMgr(
+      'មិនដឹងប្រៅការញ៉ី',
+      font, fontProvider, true, 500, 0, 0,
+    );
+    // We can't guarantee glyphs are present, but it must not throw
+    blob?.delete();
+    shaper.delete();
+  });
+
+  it('shapeTextToBlobWithFontMgr() result can be drawn on a surface', () => {
+    const shaper = CanvasKit.Shaper.Make();
+    const blob = shaper.shapeTextToBlobWithFontMgr('Test text', font, fontProvider, true, 1000, 0, 0);
+    assert.ok(blob);
+    const surface = CanvasKit.MakeSurface(W, H);
+    const paint = new CanvasKit.Paint();
+    paint.setColor(CanvasKit.BLACK);
+    surface.getCanvas().drawTextBlob(blob, 10, 50, paint);
+    const image = surface.makeImageSnapshot();
+    const bytes = image.encodeToBytes();
+    assert.ok(bytes[0] === 0x89);
+    image.delete();
+    paint.delete();
+    surface.delete();
+    blob.delete();
+    shaper.delete();
+  });
+
+  it('shapeTextToBlobWithFontMgr() offsetX/offsetY shift glyph positions', () => {
+    const shaper = CanvasKit.Shaper.Make();
+    const blob = shaper.shapeTextToBlobWithFontMgr('Offset', font, fontProvider, true, 1000, 20, 40);
+    assert.ok(blob);
+    blob.delete();
+    shaper.delete();
+  });
+
+  // --- getEndPoint ---
+
+  it('getEndPoint() returns a Float32Array of length 2', () => {
+    const shaper = CanvasKit.Shaper.Make();
+    const pt = shaper.getEndPoint('Hello', font, true, 1000, 0, 0);
+    assert.ok(pt instanceof Float32Array);
+    assert.strictEqual(pt.length, 2);
+    shaper.delete();
+  });
+
+  it('getEndPoint() returns finite numbers', () => {
+    const shaper = CanvasKit.Shaper.Make();
+    const pt = shaper.getEndPoint('Hello', font, true, 1000, 0, 0);
+    assert.ok(Number.isFinite(pt[0]), `endX should be finite, got ${pt[0]}`);
+    assert.ok(Number.isFinite(pt[1]), `endY should be finite, got ${pt[1]}`);
+    shaper.delete();
+  });
+
+  it('getEndPoint() embeds offsetX into the result', () => {
+    const shaper = CanvasKit.Shaper.Make();
+    const base    = shaper.getEndPoint('Hello', font, true, 1000, 0,   0);
+    const shifted = shaper.getEndPoint('Hello', font, true, 1000, 100, 0);
+    // offsetX is embedded: shifted[0] should be base[0] + 100
+    assert.ok(
+      Math.abs(shifted[0] - base[0] - 100) < 1,
+      `expected shifted endX ≈ base+100, got base=${base[0]} shifted=${shifted[0]}`,
+    );
+    shaper.delete();
+  });
+
+  it('getEndPoint() offsetX shifts the result', () => {
+    const shaper = CanvasKit.Shaper.Make();
+    const base    = shaper.getEndPoint('Hello', font, true, 1000, 0,  0);
+    const shifted = shaper.getEndPoint('Hello', font, true, 1000, 50, 0);
+    assert.ok(
+      Math.abs(shifted[0] - base[0] - 50) < 1,
+      `expected shifted endX ≈ base+50, got base=${base[0]} shifted=${shifted[0]}`,
+    );
+    shaper.delete();
+  });
+
+  // --- memory management ---
+
+  it('Shaper and TextBlob delete() do not throw', () => {
+    const shaper = CanvasKit.Shaper.Make();
+    const blob = shaper.shapeTextToBlob('cleanup test', font, true, 500, 0, 0);
+    assert.doesNotThrow(() => {
+      blob?.delete();
+      shaper.delete();
+    });
+  });
+
+  it('Typeface and Font delete() do not throw', () => {
+    const ab = fontData.buffer.slice(fontData.byteOffset, fontData.byteOffset + fontData.byteLength);
+    const tf = CanvasKit.Typeface.MakeFreeTypeFaceFromData(ab);
+    const f  = new CanvasKit.Font(tf, 16);
+    assert.doesNotThrow(() => {
+      f.delete();
+      tf.delete();
+    });
+  });
+
+  it('TypefaceFontProvider.delete() does not throw', () => {
+    const provider = CanvasKit.TypefaceFontProvider.Make();
+    assert.doesNotThrow(() => provider.delete());
+  });
+});

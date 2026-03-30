@@ -2,6 +2,6 @@
   "name": "skia-example-node",
   "type": "module",
   "dependencies": {
-    "skia": "latest"
+    "skia": "^0.1.2"
   }
 }

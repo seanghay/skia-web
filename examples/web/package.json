@@ -7,7 +7,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "skia": "latest"
+    "skia": "^0.1.2"
   },
   "devDependencies": {
     "vite": "^6.0.0"

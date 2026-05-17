@@ -512,6 +512,7 @@ export interface CanvasKit {
     readonly RuntimeEffect: RuntimeEffectFactory;
     readonly Shader: ShaderFactory;
     readonly Shaper: ShaperFactory;
+    readonly SVGDOM: SVGDOMFactory;
     readonly TextBlob: TextBlobFactory;
     readonly Typeface: TypefaceFactory;
     readonly TypefaceFontProvider: TypefaceFontProviderFactory;
@@ -5073,6 +5074,48 @@ export interface SVGCanvas extends EmbindObject<"SVGCanvas"> {
      * Finalizes the drawing and returns the SVG data as a Uint8Array.
      */
     close(): Uint8Array;
+}
+
+/**
+ * SVGDOM parses and renders full SVG documents onto CanvasKit canvases.
+ */
+export interface SVGDOM extends EmbindObject<"SVGDOM"> {
+    /**
+     * Renders the SVG document into the provided canvas using the current
+     * container size.
+     * @param canvas
+     */
+    render(canvas: Canvas): void;
+
+    /**
+     * Sets the viewport/container size used to resolve relative SVG dimensions.
+     * @param width
+     * @param height
+     */
+    setContainerSize(width: number, height: number): void;
+
+    /**
+     * Returns the current container size as [width, height].
+     */
+    getContainerSize(): Float32Array;
+}
+
+export interface SVGDOMFactory {
+    /**
+     * Parses an SVG document string into an SVGDOM. Returns null if parsing fails.
+     * SVG text rendering requires using MakeFromStringWithFontMgr with a font manager
+     * containing the requested fonts.
+     * @param svg
+     */
+    MakeFromString(svg: string): SVGDOM | null;
+
+    /**
+     * Parses an SVG document string using the supplied font manager for text and
+     * embedded data URI fonts. Returns null if parsing fails.
+     * @param svg
+     * @param fontMgr
+     */
+    MakeFromStringWithFontMgr(svg: string, fontMgr: FontMgr | null): SVGDOM | null;
 }
 
 /**

@@ -1,21 +1,27 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { create } from '../src/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FONT_PATH = join(__dirname, 'GoogleSans.ttf');
+const TIGER_SVG_PATH = join(__dirname, 'Ghostscript_Tiger.svg');
+const TIGER_PNG_PATH = join(__dirname, 'Ghostscript_Tiger.png');
 const W = 400;
 const H = 300;
 
 let CanvasKit;
 let fontData;
+let tigerSvgText;
 
 before(async () => {
   CanvasKit = await create();
-  fontData = await readFile(FONT_PATH);
+  [fontData, tigerSvgText] = await Promise.all([
+    readFile(FONT_PATH),
+    readFile(TIGER_SVG_PATH, 'utf8'),
+  ]);
 });
 
 // Helper: create a minimal picture with a white background
@@ -179,6 +185,70 @@ describe('SVG export', () => {
     const canvas = svg.getCanvas();
     assert.ok(canvas);
     svg.close();
+  });
+});
+
+describe('SVG DOM import', () => {
+  it('parses and renders an SVG document', () => {
+    const svgText =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">' +
+      '<rect width="64" height="64" fill="#00ff00"/></svg>';
+    const svg = CanvasKit.SVGDOM.MakeFromString(svgText);
+    assert.ok(svg);
+    svg.setContainerSize(64, 64);
+
+    const surface = CanvasKit.MakeSurface(64, 64);
+    assert.ok(surface);
+    svg.render(surface.getCanvas());
+
+    const image = surface.makeImageSnapshot();
+    const bytes = image.encodeToBytes();
+    image.delete();
+    surface.delete();
+    svg.delete();
+
+    assert.ok(bytes instanceof Uint8Array);
+    assert.strictEqual(bytes[0], 0x89);
+    assert.strictEqual(bytes[1], 0x50);
+    assert.strictEqual(bytes[2], 0x4E);
+    assert.strictEqual(bytes[3], 0x47);
+  });
+
+  it('parses and renders the Ghostscript Tiger fixture', async () => {
+    const svg = CanvasKit.SVGDOM.MakeFromString(tigerSvgText);
+    assert.ok(svg);
+    svg.setContainerSize(256, 256);
+
+    const surface = CanvasKit.MakeSurface(256, 256);
+    assert.ok(surface);
+    const canvas = surface.getCanvas();
+    canvas.drawColor(CanvasKit.WHITE);
+    svg.render(canvas);
+
+    const image = surface.makeImageSnapshot();
+    const pixels = image.readPixels(0, 0, {
+      width: 256,
+      height: 256,
+      colorType: CanvasKit.ColorType.RGBA_8888,
+      alphaType: CanvasKit.AlphaType.Unpremul,
+      colorSpace: CanvasKit.ColorSpace.SRGB,
+    });
+    const pngBytes = image.encodeToBytes();
+    image.delete();
+    surface.delete();
+    svg.delete();
+
+    assert.ok(pixels instanceof Uint8Array);
+    assert.ok(pngBytes instanceof Uint8Array);
+    await writeFile(TIGER_PNG_PATH, pngBytes);
+
+    let nonWhitePixels = 0;
+    for (let i = 0; i < pixels.length; i += 4) {
+      if (pixels[i] !== 255 || pixels[i + 1] !== 255 || pixels[i + 2] !== 255) {
+        nonWhitePixels++;
+      }
+    }
+    assert.ok(nonWhitePixels > 1000);
   });
 });
 

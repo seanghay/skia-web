@@ -708,7 +708,7 @@ describe('Surface dimensions', () => {
     surface.delete();
   });
 
-  it('surface.reportBackendTypeIsGPU() returns false (CPU-only)', () => {
+  it('surface.reportBackendTypeIsGPU() returns false for software surfaces', () => {
     const surface = CanvasKit.MakeSurface(W, H);
     assert.strictEqual(surface.reportBackendTypeIsGPU(), false);
     surface.delete();

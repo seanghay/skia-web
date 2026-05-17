@@ -1,4 +1,5 @@
 // Minimum TypeScript Version: 4.4
+/// <reference types="@webgpu/types" />
 
 export default function CanvasKitInit(opts?: CanvasKitInitOptions): Promise<CanvasKit>;
 
@@ -245,6 +246,142 @@ export interface CanvasKit {
      * @param canvas - either a canvas or a string with the DOM id of it.
      */
     MakeSWCanvasSurface(canvas: HTMLCanvasElement | OffscreenCanvas | string): Surface | null;
+
+    /**
+     * A helper for creating a WebGL backed (aka GPU) surface and falling back to a CPU surface if
+     * the GPU one cannot be created. This works for both WebGL 1 and WebGL 2.
+     * @param canvas - Either a canvas or a string with the DOM id of it.
+     * @param colorSpace - One of the supported color spaces. Default is SRGB.
+     * @param opts - Options that will get passed to the creation of the WebGL context.
+     */
+    MakeWebGLCanvasSurface(canvas: HTMLCanvasElement | OffscreenCanvas | string,
+                           colorSpace?: ColorSpace,
+                           opts?: WebGLOptions): Surface | null;
+
+    /**
+     * Returns a CPU backed surface with the given dimensions, an SRGB colorspace, Unpremul
+     * alphaType and 8888 color type. The pixels belonging to this surface  will be in memory and
+     * not visible.
+     * @param width - number of pixels of the width of the drawable area.
+     * @param height - number of pixels of the height of the drawable area.
+     */
+    MakeSurface(width: number, height: number): Surface | null;
+
+    /**
+     * Creates a WebGL Context from the given canvas with the given options. If options are omitted,
+     * sensible defaults will be used.
+     * @param canvas
+     * @param opts
+     */
+    GetWebGLContext(canvas: HTMLCanvasElement | OffscreenCanvas,
+                    opts?: WebGLOptions): WebGLContextHandle;
+
+    /**
+     * Creates a GrDirectContext from the given WebGL Context.
+     * @param ctx
+     * @deprecated Use MakeWebGLContext instead.
+     */
+    MakeGrContext(ctx: WebGLContextHandle): GrDirectContext | null;
+
+    /**
+     * Creates a GrDirectContext from the given WebGL Context.
+     * @param ctx
+     */
+    MakeWebGLContext(ctx: WebGLContextHandle): GrDirectContext | null;
+
+    /**
+     * Creates a Surface that will be drawn to the given GrDirectContext (and show up on screen).
+     * @param ctx
+     * @param width - number of pixels of the width of the visible area.
+     * @param height - number of pixels of the height of the visible area.
+     * @param colorSpace
+     * @param sampleCount - sample count value from GL_SAMPLES. If not provided this will be looked up from
+     *                      the canvas.
+     * @param stencil - stencil count value from GL_STENCIL_BITS. If not provided this will be looked up
+     *                  from the WebGL Context.
+     */
+    MakeOnScreenGLSurface(ctx: GrDirectContext, width: number, height: number,
+                          colorSpace: ColorSpace, sampleCount?: number, stencil?: number): Surface | null;
+
+    /**
+     * Creates a context that operates over the given WebGPU Device.
+     * @param device
+     */
+    MakeGPUDeviceContext(device: GPUDevice): WebGPUDeviceContext | null;
+
+    /**
+     * Creates a Surface that draws to the given GPU texture.
+     * @param ctx
+     * @param texture - A texture that was created on the GPU device associated with `ctx`.
+     * @param width - Width of the visible region in pixels.
+     * @param height - Height of the visible region in pixels.
+     * @param colorSpace
+     */
+    MakeGPUTextureSurface(ctx: WebGPUDeviceContext, texture: GPUTexture, width: number, height: number,
+                          colorSpace: ColorSpace): Surface | null;
+
+    /**
+     * Creates and configures a WebGPU context for the given canvas.
+     * @param ctx
+     * @param canvas
+     * @param opts
+     */
+    MakeGPUCanvasContext(ctx: WebGPUDeviceContext, canvas: HTMLCanvasElement,
+                         opts?: WebGPUCanvasOptions): WebGPUCanvasContext | null;
+
+    /**
+     * Creates a Surface backed by the next available texture in the swapchain associated with the
+     * given WebGPU canvas context. The context must have been already successfully configured using
+     * the same GPUDevice associated with `ctx`.
+     * @param canvasContext - WebGPU context associated with the canvas. The canvas can either be an
+     *                        on-screen HTMLCanvasElement or an OffscreenCanvas.
+     * @param colorSpace
+     * @param width - width of the visible region. If not present, the canvas width from `canvasContext`
+     *                is used.
+     * @param height - height of the visible region. If not present, the canvas width from `canvasContext`
+     *                is used.
+     */
+    MakeGPUCanvasSurface(canvasContext: WebGPUCanvasContext, colorSpace: ColorSpace,
+                         width?: number, height?: number): Surface | null;
+
+    /**
+     * Returns a (non-visible) Surface on the GPU. It has the given dimensions and uses 8888
+     * color depth and premultiplied alpha. See Surface.h for more details.
+     * @param ctx
+     * @param width
+     * @param height
+     */
+    MakeRenderTarget(ctx: GrDirectContext, width: number, height: number): Surface | null;
+
+    /**
+     * Returns a (non-visible) Surface on the GPU. It has the settings provided by image info.
+     * See Surface.h for more details.
+     * @param ctx
+     * @param info
+     */
+    MakeRenderTarget(ctx: GrDirectContext, info: ImageInfo): Surface | null;
+
+    /**
+     * Returns a texture-backed image based on the content in src. It assumes the image is
+     * RGBA_8888, unpremul and SRGB. This image can be re-used across multiple surfaces.
+     *
+     * Not available for software-backed surfaces.
+     * @param src - CanvasKit will take ownership of the TextureSource and clean it up when
+     *              the image is destroyed.
+     * @param info - If provided, will be used to determine the width/height/format of the
+     *               source image. If not, sensible defaults will be used.
+     * @param srcIsPremul - set to true if the src data has premultiplied alpha. Otherwise, it will
+     *         be assumed to be Unpremultiplied. Note: if this is true and info specifies
+     *         Unpremul, Skia will not convert the src pixels first.
+     */
+    MakeLazyImageFromTextureSource(src: TextureSource, info?: ImageInfo | PartialImageInfo,
+                                   srcIsPremul?: boolean): Image;
+
+    /**
+     * Deletes the associated WebGLContext. Function not available on the CPU version.
+     * @param ctx
+     */
+    deleteContext(ctx: WebGLContextHandle): void;
 
     /**
      * Returns the max size of the global cache for bitmaps used by CanvasKit.
@@ -585,7 +722,29 @@ export interface GrDirectContext extends EmbindObject<"GrDirectContext"> {
     setResourceCacheLimitBytes(bytes: number): void;
 }
 
+/**
+ * Represents the context backed by a WebGPU device instance.
+ */
+export type WebGPUDeviceContext = GrDirectContext;
 
+/**
+ * Represents the canvas context and swapchain backed by a WebGPU device.
+ */
+export interface WebGPUCanvasContext {
+    /**
+     * A convenient way to draw multiple frames over the swapchain texture sequence associated with
+     * a canvas element. Each call internally constructs a new Surface that targets the current
+     * GPUTexture in swapchain.
+     *
+     * This requires an environment where a global function called requestAnimationFrame is
+     * available (e.g. on the web, not on Node). The internally created surface is flushed and
+     * destroyed automatically by this wrapper once the `drawFrame` callback returns.
+     *
+     * Users can call canvasContext.requestAnimationFrame in the callback function to
+     * draw multiple frames, e.g. of an animation.
+     */
+    requestAnimationFrame(drawFrame: (_: Canvas) => void): void;
+}
 
 /**
  * The glyph and grapheme cluster information associated with a code point within
